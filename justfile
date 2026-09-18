@@ -24,8 +24,30 @@ pdfium_asset := if os() == "macos" {
 }
 
 # For windows shell to be supported (suppose code is multi-platforms ready)
-set shell := ["bash", "-uc"]
-set windows-shell := ["cmd.exe", "/c"]
+#
+# Directory containing the Git for Windows Bash used by all Windows recipes.
+# Set a Windows environment variable JUST_BASH_PATH to the *directory* holding
+# bash.exe (8.3 short form recommended, no spaces), e.g.:
+#   setx JUST_BASH_PATH "C:\PROGRA~1\Git\bin"
+# Falls back to the standard Git for Windows install location when unset.
+win_bash_dir := env_var_or_default("JUST_BASH_PATH", "C:\\PROGRA~1\\Git\\bin")
+# NB: join with a backslash, not the '/' operator - a shebang interpreter path
+# containing '/' would make `just` look for cygpath to translate it.
+win_bash_exe := win_bash_dir + "\\bash.exe"
+
+# Shell settings: `set shell` / `set windows-shell` are NOT needed.
+# With both unset, `just` defaults to `sh -cu` (resolved from PATH) on all
+# platforms for recipe lines and backticks - on Windows this resolves to Git
+# for Windows' sh.exe, which handles the POSIX syntax (mkdir -p, cp, rm, …).
+# Shebang-line recipes (e.g. `info`) bypass the shell settings entirely and
+# use `SHEBANG` below.
+# Run `just win-bash-check` to verify this machine's bash/sh configuration.
+
+# Interpreter used by shebang-line recipes (e.g. `info`, `check-deps`, `setup-pdfium`).
+# On Windows, run them with Git for Windows Bash: an 8.3 short path contains neither '/'
+# nor spaces, so `just` executes it directly without needing `cygpath` translation.
+# On Unix, keep the standard env bash.
+SHEBANG := if os() == "windows" { win_bash_exe } else { "/usr/bin/env bash" }
 
 ##################################################
 # Default
@@ -41,7 +63,7 @@ default:
 
 # Print environment info (OS, arch, toolchains, PDFium asset)
 info:
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     set +e
     echo "OS          : {{ os() }} ({{ arch() }})"
     echo "Project     : {{ project_directory }}"
@@ -55,7 +77,7 @@ info:
 
 # Check that required tools are available (build tools fatal; the rest warn)
 check-deps:
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     set +e
     errors=0
     warnings=0
@@ -96,9 +118,111 @@ check-deps:
 setup: check-deps setup-pdfium
     @echo "✓ Setup complete - run 'just run' to start"
 
+# Verify the Windows bash/sh configuration used by all Windows recipes.
+# Runs under PowerShell (not bash!) so it works even when the configured
+# bash.exe is missing or broken. Windows-only; fails with concrete follow-up
+# steps when: JUST_BASH_PATH is unset (advisory) or invalid, bash.exe is
+# missing, the path contains spaces (needs the 8.3 short form), the
+# interpreter is a WSL bash instead of Git Bash, or `sh` (just's default
+# recipe shell) does not resolve to Git for Windows' POSIX sh.
+[windows]
+[script("powershell")]
+win-bash-check:
+    $bashExe = '{{ win_bash_exe }}'
+    $bashDir = '{{ win_bash_dir }}'
+    $errors  = 0
+
+    Write-Host '--- Windows Bash check ---'
+
+    # 1. JUST_BASH_PATH environment variable
+    if ([string]::IsNullOrWhiteSpace($env:JUST_BASH_PATH)) {
+        Write-Host ("WARN JUST_BASH_PATH is not set - falling back to default: '{0}'" -f $bashDir)
+        Write-Host '  Follow-up: set it explicitly to the folder containing Git Bash:'
+        Write-Host '    setx JUST_BASH_PATH "C:\PROGRA~1\Git\bin"'
+        Write-Host '  (the default only matches the standard Git for Windows install location)'
+        Write-Host ''
+    } else {
+        Write-Host ("OK   JUST_BASH_PATH is set: '{0}'" -f $env:JUST_BASH_PATH)
+    }
+
+    # 2. bash.exe exists
+    if (Test-Path -LiteralPath $bashExe -PathType Leaf) {
+        Write-Host ("OK   bash.exe found: {0}" -f $bashExe)
+    } else {
+        Write-Host ("FAIL bash.exe not found at: {0}" -f $bashExe)
+        Write-Host '  Follow-up steps:'
+        Write-Host '    1. Find your Git for Windows install folder:'
+        Write-Host '         where git    # e.g. C:\Program Files\Git\cmd\git.exe'
+        Write-Host '       bash.exe sits in <git-root>\bin (or <git-root>\usr\bin).'
+        Write-Host '    2. Point JUST_BASH_PATH at that folder and restart your shell:'
+        Write-Host '         setx JUST_BASH_PATH "<git-bash-bin-folder>"'
+        $errors++
+    }
+
+    # 3. path must not contain spaces (breaks shebang-line recipes)
+    if ($bashExe -notmatch ' ') {
+        Write-Host 'OK   path has no spaces'
+    } elseif (Test-Path -LiteralPath $bashExe -PathType Leaf) {
+        Write-Host ("FAIL path contains spaces: {0}" -f $bashExe)
+        Write-Host "  Spaces break shebang-line recipe execution in 'just'."
+        Write-Host '  Follow-up steps:'
+        Write-Host '    1. Get the 8.3 short path (no spaces):'
+        Write-Host ('         cmd /c for %I in ("{0}") do @echo %~sI' -f $bashExe)
+        Write-Host '    2. Point JUST_BASH_PATH at that short folder and restart your shell:'
+        Write-Host '         setx JUST_BASH_PATH "<short-path-folder>"'
+        $errors++
+    }
+
+    # 4. must be Git Bash, not WSL bash
+    if (Test-Path -LiteralPath $bashExe -PathType Leaf) {
+        $uname = (& $bashExe -c 'uname -s' 2>$null) -join ' '
+        if ($uname -match 'MINGW|MSYS') {
+            Write-Host ("OK   Git for Windows Bash detected (uname: {0})" -f $uname)
+        } else {
+            Write-Host ("FAIL {0} is not Git for Windows Bash (uname: {1})" -f $bashExe, $uname)
+            Write-Host '  It may be a WSL bash, which cannot execute the Windows temp script'
+            Write-Host "  paths 'just' passes to shebang-line recipes."
+            Write-Host '  Follow-up: point JUST_BASH_PATH at your Git for Windows bin folder'
+            Write-Host '  and restart your shell, e.g.: setx JUST_BASH_PATH "C:\PROGRA~1\Git\bin"'
+            $errors++
+        }
+    }
+
+    # 5. `sh` (just's default recipe shell) must resolve to a POSIX sh from
+    #    Git for Windows - not WSL, not something broken
+    $shCmd = Get-Command sh -ErrorAction SilentlyContinue
+    if ($null -eq $shCmd) {
+        Write-Host "FAIL 'sh' not found on PATH - 'just' uses it as default recipe shell."
+        Write-Host '  Recipe lines and backticks would fail with: could not find shell.'
+        Write-Host '  Follow-up steps:'
+        Write-Host '    1. Install Git for Windows (https://git-scm.com/download/win).'
+        Write-Host '    2. Ensure its bin folder is on PATH (contains sh.exe), e.g.:'
+        Write-Host '         setx PATH "$env:PATH;C:\PROGRA~1\Git\bin"'
+        $errors++
+    } else {
+        Write-Host ("OK   sh on PATH: {0}" -f $shCmd.Source)
+        $shUname = (& $shCmd.Source -c 'uname -s' 2>$null) -join ' '
+        if ($shUname -match 'MINGW|MSYS') {
+            Write-Host ("OK   sh is Git for Windows POSIX sh (uname: {0})" -f $shUname)
+        } else {
+            Write-Host ("FAIL sh is not Git for Windows sh (uname: {0})" -f $shUname)
+            Write-Host '  Recipe lines may fail or behave unexpectedly.'
+            Write-Host '  Follow-up: put Git for Windows bin folder earlier on PATH.'
+            $errors++
+        }
+    }
+
+    Write-Host ''
+    if ($errors -gt 0) {
+        Write-Host ("FAIL {0} error(s) found - fix the above, then re-run 'just win-bash-check'." -f $errors)
+        exit 1
+    }
+    Write-Host ("OK   Windows Bash configuration OK (bash: {0})" -f $bashExe)
+    exit 0
+
 # Download the prebuilt PDFium library for this platform
 setup-pdfium:
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     set -euo pipefail
     mkdir -p third_party/pdfium
     cd third_party/pdfium
@@ -111,7 +235,7 @@ setup-pdfium:
 
 # Ensure the PDFium library is present (download it if missing)
 ensure-pdfium:
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     if ls third_party/pdfium/lib/libpdfium.* >/dev/null 2>&1 \
         || ls third_party/pdfium/lib/pdfium.dll >/dev/null 2>&1; then
         echo "✓ PDFium already present"
@@ -175,7 +299,7 @@ bundle: ensure-pdfium
 
 # macOS .app bundle (ad-hoc code-signed so macOS won't report it as "damaged")
 bundle-mac: ensure-pdfium
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     set -euo pipefail
     rm -rf target/release/bundle/osx
     cargo bundle --release --format osx
@@ -255,7 +379,7 @@ sbom:
 
 # Upload SBOM to Dependency Track (requires DT_API_KEY, DT_PROJECT_UUID, DT_BASE_URL env vars)
 sbom-upload:
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     set -euo pipefail
     echo "Uploading SBOM to Dependency Track..."
     # Load .env file if it exists
@@ -298,7 +422,7 @@ clean:
 
 # Check steps for publishing is_lib ["true"|"false"]
 publish-check is_lib="false":
-    #!/usr/bin/env bash
+    #!{{ SHEBANG }}
     echo "Run all tests"
     cargo test
     echo "Run clippy"
