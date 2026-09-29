@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-09-29
+
+### 🚀 Features
+
+- Windows independent functions like zoom, laser and draw ([65a03ad](https://github.com/tschinz/presenters/commit/65a03ad0d4343ae2a78b541a7f4040ec93200b47) - zas)
+
+### 🐛 Bug Fixes
+
+- Icons and author ([3da58e3](https://github.com/tschinz/presenters/commit/3da58e3e98ef483f0c718e70d4603e53998866e5) - zas)
+
+### 📚 Documentation
+
+- *(readme)* Add screenshots and minor modications ([4bc8e62](https://github.com/tschinz/presenters/commit/4bc8e620de74227f979746163041274988dda336) - zas)
+
+
+**Full Changelog**: [v0.1.1...0.1.2](https://github.com/tschinz/presenters/compare/v0.1.1...0.1.2)
+
 ## [0.1.1] - 2026-09-17
 
 ### 🚀 Features
