@@ -4830,7 +4830,7 @@ Used by:
 
 MIT License
 
-Copyright (c) 2026 Silvan Zahno
+Copyright (c) 2026 tschinz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the &quot;Software&quot;), to deal

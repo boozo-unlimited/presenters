@@ -498,14 +498,11 @@ impl PresenterApp {
         let doc_open = self.document.is_some();
 
         // ── General ──
-        if ui.button(small("Shortcuts")).clicked() {
-          self.show_shortcuts = !self.show_shortcuts;
-        }
-        if ui.button(small("Open (O)")).clicked() {
+        if ui.button(small("📂 Open (O)")).clicked() {
           self.pick_file();
         }
         if doc_open {
-          if ui.button(small("✕ Close (W)")).clicked() {
+          if ui.button(small("✖ Close (W)")).clicked() {
             self.close_file();
           }
           if self.presenting {
@@ -533,7 +530,7 @@ impl PresenterApp {
         if ui.button(small(" + ")).on_hover_text("Larger (+)").clicked() {
           self.adjust_font(2.0);
         }
-        if ui.button(small("⇄ Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
+        if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
           self.flip_layout();
         }
 
@@ -549,7 +546,7 @@ impl PresenterApp {
         if doc_open {
           let mode_label = match self.mode {
             InputMode::Pointer => "✏ Draw (P)",
-            InputMode::Draw => "• Pointer (P)",
+            InputMode::Draw => "🔴 Pointer (P)",
           };
           if ui.button(small(mode_label)).on_hover_text("Toggle laser pointer / drawing").clicked() {
             self.toggle_mode();
@@ -561,8 +558,11 @@ impl PresenterApp {
 
         // ── Far right: About + filename ──
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-          if ui.button(small("ⓘ About")).on_hover_text("About this application").clicked() {
+          if ui.button(small("About")).on_hover_text("About this application").clicked() {
             self.show_about = !self.show_about;
+          }
+          if ui.button(small("Shortcuts")).on_hover_text("Show keyboard & mouse shortcuts").clicked() {
+            self.show_shortcuts = !self.show_shortcuts;
           }
           if let Some(doc) = self.document.as_ref() {
             let name = doc.path().file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -606,8 +606,8 @@ impl PresenterApp {
       .resizable(false)
       .show(ctx, |ui| {
         let rows = [
-          ("→ / Space / PgDn", "Next slide"),
-          ("← / PgUp", "Previous slide"),
+          ("➡ / Space / PgDn", "Next slide"),
+          ("⬅ / PgUp", "Previous slide"),
           ("Home / End", "First / last slide"),
           ("F5", "Start presentation"),
           ("Esc", "Quit presentation"),
@@ -696,7 +696,7 @@ impl PresenterApp {
           ui.label(env!("CARGO_PKG_DESCRIPTION"));
           ui.add_space(4.0);
           ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-          ui.label(format!("© 2026 {}", env!("CARGO_PKG_AUTHORS")));
+          ui.hyperlink_to("© 2026 tschinz", "https://github.com/tschinz");
           ui.label(format!("License: {}", env!("CARGO_PKG_LICENSE")));
           ui.hyperlink(env!("CARGO_PKG_REPOSITORY"));
         });
@@ -739,7 +739,7 @@ impl PresenterApp {
         let h = w / aspect;
         ui.add(egui::Image::new(egui::load::SizedTexture::new(logo.id(), egui::vec2(w, h))).tint(egui::Color32::from_white_alpha(90)));
         ui.add_space(12.0);
-        if ui.button("Open a PDF… (O)").clicked() {
+        if ui.button("📂 Open a PDF… (O)").clicked() {
           self.pick_file();
         }
         ui.add_space(4.0);
