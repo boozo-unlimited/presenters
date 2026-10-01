@@ -12,8 +12,33 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Generate the GitHub release body once, from the changelog, with git-cliff (the same
+  # tool and cliff.toml used for CHANGELOG.md). The build jobs download it as an artifact
+  # and pass it to the release, so the release notes are the real changelog section rather
+  # than the tagged commit message.
+  notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags, required by git-cliff
+      - name: Generate release notes with git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+
   macos:
     name: macOS .app
+    needs: notes
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,12 +64,18 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             "target/release/bundle/osx/presenters.app" presenters-macos-arm64.zip
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
           files: presenters-macos-arm64.zip
 
   linux:
     name: Linux .deb
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,12 +96,18 @@ jobs:
           tar xzf /tmp/pdfium.tgz -C third_party/pdfium
       - name: Bundle .deb
         run: cargo bundle --release --format deb
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
           files: target/release/bundle/deb/*.deb
 
   windows:
     name: Windows portable zip
+    needs: notes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +131,11 @@ jobs:
           cp README.md dist/presenters/ || true
           cp img/icon-256.png dist/presenters/ || true
           cd dist && 7z a ../presenters-windows-x64.zip presenters
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
           files: presenters-windows-x64.zip

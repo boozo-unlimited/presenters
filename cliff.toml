@@ -62,6 +62,14 @@ commit_preprocessors = [
 # regex for parsing and grouping commits
 # # regex for parsing and grouping commits
 commit_parsers = [
+  # Conventional commit exclusions — must come before the general "^chore" rule below,
+  # otherwise that rule matches first and these never skip (first match wins).
+  { message = "^chores?\\(releases?\\):", skip = true },
+  { message = "^chores?\\(deps?.*\\)", skip = true },
+  { message = "^chores?\\(pr\\)", skip = true },
+  { message = "^chores?\\(pull\\)", skip = true },
+  { message = "^chores?\\(version\\):", skip = true },
+
   { message = "^feat(ure)?s?", group = "<!-- 0 -->🚀 Features" },
   { message = "^fix(es)?", group = "<!-- 1 -->🐛 Bug Fixes" },
   { message = "^docs?", group = "<!-- 3 -->📚 Documentation" },
@@ -73,13 +81,6 @@ commit_parsers = [
   { message = "^security", group = "<!-- 8 -->🛡️ Security" },
   { body = ".*security", group = "<!-- 8 -->🛡️ Security" },
   { message = "^reverts?", group = "<!-- 9 -->◀️ Revert" },
-
-  # Conventional commit exclusions
-  { message = "^chores?\\(releases?\\):", skip = true },
-  { message = "^chores?\\(deps?.*\\)", skip = true },
-  { message = "^chores?\\(pr\\)", skip = true },
-  { message = "^chores?\\(pull\\)", skip = true },
-  { message = "^chores?\\(version\\):", skip = true },
 
   # Legacy commit styles
   { message = "(?i)^ADD", group = "<!-- 0 -->🚀 Features" },
