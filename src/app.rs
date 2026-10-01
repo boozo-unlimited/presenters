@@ -322,11 +322,12 @@ impl PresenterApp {
       self.audience_needs_place = true;
       // The talk timer runs while presenting; starting/resuming here, pausing on quit.
       self.session.timer_mut().start();
-      // If there's a second screen, place the audience window there and fullscreen
-      // it; on a single screen, open it windowed so the presenter stays visible.
-      let has_external = crate::screen::external_origin().is_some();
-      self.audience_apply_fullscreen = has_external;
-      self.audience_fullscreen = has_external;
+      // Fullscreen the audience window either way: on the second screen if present, otherwise
+      // on the current (primary) screen, covering the presenter. Placement (which monitor)
+      // happens next frame in `show_audience`, then fullscreen is applied. Shortcuts keep
+      // working over the fullscreen audience because `handle_shortcuts` also runs for it.
+      self.audience_apply_fullscreen = true;
+      self.audience_fullscreen = true;
     }
   }
 
@@ -365,7 +366,12 @@ impl PresenterApp {
     }
   }
 
-  fn handle_keys(&mut self, ctx: &egui::Context) {
+  /// Keyboard shortcuts for one window's input context. Runs for the presenter window and,
+  /// while presenting, also for the audience window — so navigation and controls work no
+  /// matter which window has focus (e.g. when the audience is fullscreen on a single screen,
+  /// covering the presenter). A key event only lands in the focused viewport, so running this
+  /// for both windows never double-triggers.
+  fn handle_shortcuts(&mut self, ctx: &egui::Context) {
     let mut open = false;
     let mut font_delta = 0.0;
     let mut present = false;
@@ -414,9 +420,6 @@ impl PresenterApp {
       close = i.key_pressed(Key::W);
       open = i.key_pressed(Key::O);
     });
-    // Mouse-wheel navigation / zoom on the presenter window, anchored at its current slide.
-    let anchor = self.current_slide_rect;
-    self.handle_wheel(ctx, anchor);
     if font_delta != 0.0 {
       self.adjust_font(font_delta);
     }
@@ -949,7 +952,10 @@ impl PresenterApp {
 
 impl eframe::App for PresenterApp {
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-    self.handle_keys(ctx);
+    self.handle_shortcuts(ctx);
+    // Mouse-wheel navigation / zoom on the presenter window, anchored at its current slide.
+    let anchor = self.current_slide_rect;
+    self.handle_wheel(ctx, anchor);
     self.handle_dropped_files(ctx);
 
     // Zoom is per-slide: reset it when the page changes.
@@ -1048,6 +1054,9 @@ impl PresenterApp {
       // window is on the target monitor, so it fullscreens there and not on primary.
       if let Some([mx, my]) = crate::screen::external_origin() {
         builder = builder.with_position([mx + 80.0, my + 80.0]).with_inner_size([800.0, 450.0]);
+      } else if let Some(prim) = crate::screen::primary() {
+        // Single screen: open on the current monitor so the next-frame fullscreen covers it.
+        builder = builder.with_position([prim.x, prim.y]).with_inner_size([prim.w.max(640.0), prim.h.max(360.0)]);
       } else if let Some(g) = self.audience_geometry {
         builder = builder.with_position([g.x, g.y]).with_inner_size([g.w, g.h]);
       } else {
@@ -1077,6 +1086,10 @@ impl PresenterApp {
           // Scroll to navigate and Ctrl/Cmd+scroll to zoom, anchored at this window's slide.
           self.handle_wheel(vctx, slide_rect);
         });
+
+      // All keyboard shortcuts also work while the audience window has focus — essential on a
+      // single screen, where it is fullscreen over the presenter and holds the keyboard focus.
+      self.handle_shortcuts(vctx);
 
       let (pos, size) = vctx.input(|i| {
         let vp = i.viewport();
