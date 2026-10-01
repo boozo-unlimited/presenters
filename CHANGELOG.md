@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-10-01
+
+### 🚀 Features
+
+- Manage recent files on the start screen ([d7aa249](https://github.com/tschinz/presenters/commit/d7aa2497c26c254a985de68748add9772b4635f7) - zas)
+
+
+**Full Changelog**: [v0.1.3...0.1.4](https://github.com/tschinz/presenters/compare/v0.1.3...0.1.4)
+
 ## [0.1.3] - 2026-10-01
 
 ### 🚀 Features
