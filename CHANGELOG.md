@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-10-01
+
+### 🚀 Features
+
+- Single-screen presentation support ([7b62983](https://github.com/tschinz/presenters/commit/7b629836c7b89d26f82da120bf372c036f551ca5) - zas)
+
+
+**Full Changelog**: [v0.1.2...0.1.3](https://github.com/tschinz/presenters/compare/v0.1.2...0.1.3)
+
 ## [0.1.2] - 2026-09-29
 
 ### 🚀 Features
