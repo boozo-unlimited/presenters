@@ -209,13 +209,10 @@ test:
 clippy:
     cargo clippy --all-targets --all-features -- -D warnings
 
-# Format source with rustfmt
-rustfmt:
+# Format code (rustfmt.toml) and lint it with clippy
+lint:
     cargo fmt --all
-
-# Check formatting without modifying files (CI-style)
-rustfmt-check:
-    cargo fmt --all --check
+    cargo clippy --all-targets -- -D warnings
 
 # Regenerate the third-party license list shown on the About page (needs cargo-about).
 # Install the tool with: cargo install cargo-about --features cli
@@ -254,7 +251,7 @@ sbom:
     cargo sbom --output-format cyclone_dx_json_1_6 >> target/sbom-cyclone_dx_1_6.json
 
 # Upload SBOM to Dependency Track (requires DT_API_KEY, DT_PROJECT_UUID, DT_BASE_URL env vars)
-sbom-upload:
+sbom-upload: sbom
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Uploading SBOM to Dependency Track..."
