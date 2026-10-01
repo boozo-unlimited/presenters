@@ -137,6 +137,11 @@ pub struct PresenterApp {
 impl PresenterApp {
   pub fn new(_cc: &eframe::CreationContext<'_>, initial: Option<&Path>) -> Self {
     let st = config::State::load();
+    // Prune recent entries whose file no longer exists on disk (moved/deleted).
+    let mut recent = st.recent;
+    let had = recent.len();
+    recent.retain(|e| e.path.is_file());
+    let pruned = recent.len() != had;
     let mut app = Self {
       document: None,
       session: Session::new(0),
@@ -150,7 +155,7 @@ impl PresenterApp {
       audience_fullscreen: st.audience_fullscreen,
       audience_geometry: st.audience_geometry,
       window_geometry: st.window_geometry,
-      recent: st.recent,
+      recent,
       audience_needs_place: false,
       audience_apply_fullscreen: false,
       show_shortcuts: false,
@@ -166,9 +171,13 @@ impl PresenterApp {
       current_slide_rect: None,
       logo: None,
       about_logo: None,
-      dirty: false,
+      dirty: pruned,
       last_save: Instant::now(),
     };
+    // Persist the pruned list right away so the removals stick even if nothing else changes.
+    if pruned {
+      app.save_now();
+    }
     if let Some(path) = initial {
       app.open(path);
     }
@@ -207,6 +216,16 @@ impl PresenterApp {
     self.recent.insert(0, config::RecentEntry { path, page });
     self.recent.truncate(MAX_RECENT);
     self.dirty = true;
+  }
+
+  /// Remove one file from the recent list (the × on the start screen), and persist it.
+  fn remove_recent(&mut self, path: &Path) {
+    let before = self.recent.len();
+    self.recent.retain(|e| e.path != path);
+    if self.recent.len() != before {
+      self.dirty = true;
+      self.save_now();
+    }
   }
 
   /// Keep the current file's recent entry pointing at the current page.
@@ -730,6 +749,7 @@ impl PresenterApp {
   fn start_screen(&mut self, ctx: &egui::Context) {
     let logo = self.logo_texture(ctx);
     let mut to_open: Option<PathBuf> = None;
+    let mut to_remove: Option<PathBuf> = None;
     egui::CentralPanel::default().show(ctx, |ui| {
       ui.add_space(28.0);
       ui.vertical_centered(|ui| {
@@ -776,16 +796,29 @@ impl PresenterApp {
               let name = entry.path.file_name().unwrap_or_default().to_string_lossy().into_owned();
               let folder = entry.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
               let resp = ui.add_sized([btn_w, btn_h], egui::Button::new(egui::RichText::new(format!("📄  {name}")).size(17.0)));
-              if resp.clicked() {
+              resp.clone().on_hover_text(&folder);
+              // Small × in the top-right corner to remove this entry from the list.
+              let x_sz = 18.0;
+              let m = 4.0;
+              let x_rect = egui::Rect::from_min_size(egui::pos2(resp.rect.right() - x_sz - m, resp.rect.top() + m), egui::vec2(x_sz, x_sz));
+              let x_resp = ui
+                .put(x_rect, egui::Button::new(egui::RichText::new("✖").size(11.0)).small())
+                .on_hover_text("Remove from recent");
+              // × wins over the card so a remove-click never also opens the file.
+              if x_resp.clicked() {
+                to_remove = Some(entry.path.clone());
+              } else if resp.clicked() {
                 to_open = Some(entry.path.clone());
               }
-              resp.on_hover_text(&folder);
             }
           });
           ui.add_space(gap);
         }
       });
     });
+    if let Some(path) = to_remove {
+      self.remove_recent(&path);
+    }
     if let Some(path) = to_open {
       self.open(&path);
     }
