@@ -54,6 +54,8 @@ pub struct State {
   pub audience_geometry: Option<Geometry>,
   pub window_geometry: Option<Geometry>,
   pub recent: Vec<RecentEntry>,
+  pub show_thumbnails: bool,
+  pub thumb_height: f32,
 }
 
 impl Default for State {
@@ -66,6 +68,8 @@ impl Default for State {
       audience_geometry: None,
       window_geometry: None,
       recent: Vec::new(),
+      show_thumbnails: true,
+      thumb_height: 180.0,
     }
   }
 }

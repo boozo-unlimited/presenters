@@ -75,6 +75,9 @@ const MAX_POINTER_SIZE: f32 = 4.0;
 const POINTER_STEP: f32 = 0.25;
 const NUM_LAYOUTS: usize = 4;
 const MAX_RECENT: usize = 15;
+/// Resizable bounds for the thumbnail strip panel (total height, in points).
+const MIN_STRIP_H: f32 = 70.0;
+const MAX_STRIP_H: f32 = 420.0;
 const SAVE_THROTTLE: Duration = Duration::from_millis(1200);
 const MIN_ZOOM: f32 = 1.0;
 const MAX_ZOOM: f32 = 8.0;
@@ -87,6 +90,17 @@ pub struct PresenterApp {
   document: Option<Document>,
   session: Session,
   cache: TextureCache,
+  /// Separate, small-texture cache for the thumbnail strip, so scrolling it never evicts
+  /// the big current/next/notes textures from `cache`.
+  thumb_cache: TextureCache,
+  /// Whether the bottom thumbnail strip is shown (toggle with T).
+  show_thumbnails: bool,
+  /// Height of the thumbnail strip panel (drag its top edge to resize); persisted.
+  thumb_height: f32,
+  /// The slide the strip last auto-scrolled to follow (so it only re-centres on change).
+  thumb_follow_last: usize,
+  /// The strip's on-screen rect (so the wheel scrolls the strip instead of changing slides).
+  thumb_rect: Option<egui::Rect>,
   status: String,
   footer_font: f32,
   /// Laser-pointer dot size factor (1.0 = default).
@@ -146,6 +160,11 @@ impl PresenterApp {
       document: None,
       session: Session::new(0),
       cache: TextureCache::new(48),
+      thumb_cache: TextureCache::new(128),
+      show_thumbnails: st.show_thumbnails,
+      thumb_height: st.thumb_height.clamp(MIN_STRIP_H, MAX_STRIP_H),
+      thumb_follow_last: usize::MAX,
+      thumb_rect: None,
       status: "Open a PDF to begin (O).".to_owned(),
       footer_font: st.footer_font,
       pointer_size: st.pointer_size.clamp(MIN_POINTER_SIZE, MAX_POINTER_SIZE),
@@ -194,6 +213,7 @@ impl PresenterApp {
         }
         self.document = Some(doc);
         self.cache.clear();
+        self.thumb_cache.clear();
         self.record_recent(path);
         self.save_now(); // persist the new recent entry immediately
       }
@@ -251,6 +271,8 @@ impl PresenterApp {
       audience_geometry: self.audience_geometry,
       window_geometry: self.window_geometry,
       recent: self.recent.clone(),
+      show_thumbnails: self.show_thumbnails,
+      thumb_height: self.thumb_height,
     }
   }
 
@@ -436,6 +458,10 @@ impl PresenterApp {
       if i.key_pressed(Key::D) {
         self.clear_drawings();
       }
+      if i.key_pressed(Key::T) {
+        self.show_thumbnails = !self.show_thumbnails;
+        self.dirty = true;
+      }
       close = i.key_pressed(Key::W);
       open = i.key_pressed(Key::O);
     });
@@ -460,7 +486,7 @@ impl PresenterApp {
   /// Plain scroll navigates slides (down = next, up = previous). A real wheel reports
   /// discrete Line notches — one slide each, by sign. Trackpad pixel scrolling (Point)
   /// accumulates against a threshold.
-  fn handle_wheel(&mut self, ctx: &egui::Context, anchor: Option<egui::Rect>) {
+  fn handle_wheel(&mut self, ctx: &egui::Context, anchor: Option<egui::Rect>, strip: Option<egui::Rect>) {
     if self.document.is_none() {
       self.scroll_accum = 0.0;
       return;
@@ -469,6 +495,12 @@ impl PresenterApp {
     ctx.input(|i| {
       let zoom_mod = i.modifiers.command || i.modifiers.ctrl;
       let cursor = i.pointer.hover_pos();
+      // Over the thumbnail strip, let it scroll horizontally instead of changing slides.
+      if let (Some(s), Some(c)) = (strip, cursor)
+        && s.contains(c)
+      {
+        return;
+      }
       for event in &i.events {
         if let egui::Event::MouseWheel { unit, delta, .. } = event {
           if zoom_mod {
@@ -555,6 +587,10 @@ impl PresenterApp {
         if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
           self.flip_layout();
         }
+        if ui.button(small("🎞 Thumbnails (T)")).on_hover_text("Toggle the slide thumbnail strip").clicked() {
+          self.show_thumbnails = !self.show_thumbnails;
+          self.dirty = true;
+        }
 
         // ── Drawing ──
         ui.separator();
@@ -621,6 +657,134 @@ impl PresenterApp {
     ctx.request_repaint_after(Duration::from_secs(1));
   }
 
+  /// A PowerPoint-style strip of slide thumbnails along the bottom of the presenter view.
+  /// Horizontally scrollable and virtualized — only the on-screen thumbnails are rendered,
+  /// so it stays fast on 300+ page decks. Click a thumbnail to jump; the current slide is
+  /// highlighted and the strip auto-follows it on navigation. Toggle with `T`.
+  fn thumbnails(&mut self, ctx: &egui::Context) {
+    let Self {
+      document,
+      session,
+      thumb_cache,
+      show_thumbnails,
+      thumb_height,
+      thumb_follow_last,
+      thumb_rect,
+      dirty,
+      ..
+    } = self;
+    if !*show_thumbnails {
+      *thumb_rect = None;
+      return;
+    }
+    let Some(doc) = document.as_ref() else {
+      *thumb_rect = None;
+      return;
+    };
+    let count = session.page_count();
+    if count == 0 {
+      *thumb_rect = None;
+      return;
+    }
+    let current = session.current();
+    let aspect0 = doc.slide_aspect(0).max(0.1);
+
+    const GAP: f32 = 8.0;
+    const PAD: f32 = 8.0;
+
+    // Re-centre on the current slide only when it changes, so manual scrolling is preserved.
+    let follow = current != *thumb_follow_last;
+    *thumb_follow_last = current;
+
+    let mut goto: Option<usize> = None;
+
+    // The panel is resizable (drag its top edge); thumbnails scale to fill its height.
+    let panel = egui::TopBottomPanel::bottom("thumbnails")
+      .resizable(true)
+      .default_height(*thumb_height)
+      .height_range(MIN_STRIP_H..=MAX_STRIP_H)
+      .show(ctx, |ui| {
+        // Size the thumbnails to the current strip height, reserving room for the padding
+        // above and the horizontal scrollbar below.
+        let thumb_h = (ui.available_height() - PAD - 16.0).max(36.0);
+        let thumb_w = thumb_h * aspect0;
+        let stride = thumb_w + GAP;
+        ui.add_space(PAD);
+        egui::ScrollArea::horizontal().show_viewport(ui, |ui, viewport| {
+          let content_w = 2.0 * PAD + count as f32 * stride - GAP;
+          ui.set_width(content_w);
+          ui.set_height(thumb_h);
+          let origin = ui.min_rect().min;
+          let ppp = ctx.pixels_per_point();
+
+          let slot = |i: usize| egui::Rect::from_min_size(origin + egui::vec2(PAD + i as f32 * stride, 0.0), egui::vec2(thumb_w, thumb_h));
+
+          // Only the thumbnails inside the scroll viewport are laid out and rendered.
+          let first = (((viewport.min.x - PAD) / stride).floor() as isize).max(0) as usize;
+          let last = ((((viewport.max.x - PAD) / stride).ceil() as isize).max(0) as usize).min(count);
+
+          for i in first..last {
+            let rect = slot(i);
+            // Aspect-fit the slide within the fixed slot (letterbox if a page differs).
+            let a = doc.slide_aspect(i).max(0.1);
+            let (mut w, mut h) = (thumb_h * a, thumb_h);
+            if w > thumb_w {
+              w = thumb_w;
+              h = thumb_w / a;
+            }
+            let img_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(w, h));
+            let px = [(w * ppp).round().max(1.0) as u32, (h * ppp).round().max(1.0) as u32];
+
+            let resp = ui.interact(rect, ui.id().with(("thumb", i)), egui::Sense::click());
+            let bg = if resp.hovered() {
+              ui.visuals().widgets.hovered.weak_bg_fill
+            } else {
+              ui.visuals().extreme_bg_color
+            };
+            ui.painter().rect_filled(img_rect, 2.0, bg);
+            if let Some(tex) = thumb_cache.get_or_render(ctx, doc, i, Region::Slide, px) {
+              egui::Image::new(egui::load::SizedTexture::new(tex.id(), egui::vec2(w, h))).paint_at(ui, img_rect);
+            }
+            if i == current {
+              ui.painter()
+                .rect_stroke(img_rect.expand(1.5), 2.0, egui::Stroke::new(2.5_f32, ui.visuals().selection.bg_fill));
+            }
+            // Slide number, bottom-left of the slot.
+            ui.painter().text(
+              rect.left_bottom() + egui::vec2(2.0, -1.0),
+              egui::Align2::LEFT_BOTTOM,
+              format!("{}", i + 1),
+              egui::FontId::proportional(10.0),
+              ui.visuals().weak_text_color(),
+            );
+            if resp.clicked() {
+              goto = Some(i);
+            }
+          }
+
+          // Keep the current slide visible when it changes.
+          if follow {
+            ui.scroll_to_rect(slot(current), Some(egui::Align::Center));
+          }
+        });
+        // Claim the rest of the panel's height so egui stores the dragged size (otherwise the
+        // content rect is shorter than the panel and the strip collapses back when dragged up).
+        ui.add_space(ui.available_height().max(0.0));
+      });
+    *thumb_rect = Some(panel.response.rect);
+
+    // Remember the (possibly dragged) strip height for next session.
+    let h = panel.response.rect.height();
+    if (h - *thumb_height).abs() > 0.5 {
+      *thumb_height = h;
+      *dirty = true;
+    }
+
+    if let Some(i) = goto {
+      session.goto(i as isize);
+    }
+  }
+
   fn shortcuts_window(&mut self, ctx: &egui::Context) {
     egui::Window::new("Keyboard shortcuts")
       .open(&mut self.show_shortcuts)
@@ -637,6 +801,7 @@ impl PresenterApp {
           ("W", "Close file, back to start screen"),
           ("R", "Reset the talk timer"),
           ("L", "Flip layout (H/V with no notes; 4 presets with notes)"),
+          ("T", "Toggle the slide thumbnail strip"),
           ("+ / −", "Footer font larger / smaller"),
           ("O", "Open a PDF"),
           ("Hold mouse on current slide", "Laser pointer / draw (on the audience screen)"),
@@ -988,7 +1153,8 @@ impl eframe::App for PresenterApp {
     self.handle_shortcuts(ctx);
     // Mouse-wheel navigation / zoom on the presenter window, anchored at its current slide.
     let anchor = self.current_slide_rect;
-    self.handle_wheel(ctx, anchor);
+    let strip = self.thumb_rect;
+    self.handle_wheel(ctx, anchor, strip);
     self.handle_dropped_files(ctx);
 
     // Zoom is per-slide: reset it when the page changes.
@@ -1004,6 +1170,7 @@ impl eframe::App for PresenterApp {
 
     self.header(ctx);
     self.footer(ctx);
+    self.thumbnails(ctx);
     self.shortcuts_window(ctx);
     self.about_window(ctx);
 
@@ -1117,7 +1284,7 @@ impl PresenterApp {
             toggle_fullscreen = true;
           }
           // Scroll to navigate and Ctrl/Cmd+scroll to zoom, anchored at this window's slide.
-          self.handle_wheel(vctx, slide_rect);
+          self.handle_wheel(vctx, slide_rect, None);
         });
 
       // All keyboard shortcuts also work while the audience window has focus — essential on a

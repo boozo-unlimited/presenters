@@ -100,6 +100,7 @@ Launch with no argument and press **O** (or click **Open**) to pick a file.
 | `W` | Close the file, back to the start screen |
 | `R` | Reset the talk timer |
 | `L` | Flip layout (H/V with no notes; 4 presets with notes) |
+| `T` | Toggle the slide thumbnail strip |
 | `+` / `−` | Footer font larger / smaller |
 | `O` | Open a PDF |
 | `P` | Toggle laser pointer / drawing |
