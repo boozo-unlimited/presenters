@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-10-02
+
+### 🚀 Features
+
+- Slide thumbnail strip at the bottom of the presenter view ([bb2f5e6](https://github.com/tschinz/presenters/commit/bb2f5e6fa653c5ba5d5688acedc44634ee3c4f23) - zas)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(just)* Optimize some just recipes ([adf15b3](https://github.com/tschinz/presenters/commit/adf15b3c6c8876fa33e93e09b243a056a303cc3c) - zas)
+
+
+**Full Changelog**: [v0.1.4...0.1.5](https://github.com/tschinz/presenters/compare/v0.1.4...0.1.5)
+
 ## [0.1.4] - 2026-10-01
 
 ### 🚀 Features
