@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2026-10-03
+
+### 🚀 Features
+
+- Pointer/drawing colour picker and theme toggle ([52dfe1b](https://github.com/tschinz/presenters/commit/52dfe1bd0966aa8a3148a11599feb449a430b865) - zas)
+
+
+**Full Changelog**: [v0.1.5...0.1.6](https://github.com/tschinz/presenters/compare/v0.1.5...0.1.6)
+
 ## [0.1.5] - 2026-10-02
 
 ### 🚀 Features
