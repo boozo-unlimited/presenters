@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - Pointer/drawing colour picker and theme toggle ([52dfe1b](https://github.com/tschinz/presenters/commit/52dfe1bd0966aa8a3148a11599feb449a430b865) - zas)
+- GitHub Sponsors button in the README and About page ([3bed4af](https://github.com/tschinz/presenters/commit/3bed4af92019724a5d5c2e04cd4bfabe23f62061) - zas)
 
 
 **Full Changelog**: [v0.1.5...0.1.6](https://github.com/tschinz/presenters/compare/v0.1.5...0.1.6)
