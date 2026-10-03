@@ -36,6 +36,15 @@ pub struct Geometry {
   pub h: f32,
 }
 
+/// UI theme preference, persisted and mapped to egui's `ThemePreference`.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Theme {
+  #[default]
+  System,
+  Dark,
+  Light,
+}
+
 /// A recently opened document and the page last viewed in it (for resume).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RecentEntry {
@@ -56,6 +65,9 @@ pub struct State {
   pub recent: Vec<RecentEntry>,
   pub show_thumbnails: bool,
   pub thumb_height: f32,
+  /// RGB colour of the laser pointer and freehand drawings (alpha stays fixed).
+  pub pointer_color: [u8; 3],
+  pub theme: Theme,
 }
 
 impl Default for State {
@@ -70,6 +82,8 @@ impl Default for State {
       recent: Vec::new(),
       show_thumbnails: true,
       thumb_height: 180.0,
+      pointer_color: [230, 30, 30],
+      theme: Theme::System,
     }
   }
 }

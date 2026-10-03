@@ -54,6 +54,8 @@ struct SlideInput<'a> {
   mode: InputMode,
   /// Pointer/line size factor (from the header control).
   size: f32,
+  /// Opaque base colour for the pointer dot and strokes (alpha applied when drawing).
+  color: egui::Color32,
   pointer: &'a mut Option<egui::Pos2>,
   /// Strokes for the current page (drawn onto this slide).
   strokes: &'a mut Vec<Stroke>,
@@ -105,6 +107,10 @@ pub struct PresenterApp {
   footer_font: f32,
   /// Laser-pointer dot size factor (1.0 = default).
   pointer_size: f32,
+  /// RGB colour of the pointer dot and freehand drawings (alpha stays fixed); persisted.
+  pointer_color: [u8; 3],
+  /// UI theme preference (system / dark / light); persisted.
+  theme: config::Theme,
   layout_index: usize,
   presenting: bool,
   /// When true, the audience window shows solid black instead of the slide.
@@ -168,6 +174,8 @@ impl PresenterApp {
       status: "Open a PDF to begin (O).".to_owned(),
       footer_font: st.footer_font,
       pointer_size: st.pointer_size.clamp(MIN_POINTER_SIZE, MAX_POINTER_SIZE),
+      pointer_color: st.pointer_color,
+      theme: st.theme,
       layout_index: st.layout_index % NUM_LAYOUTS,
       presenting: false,
       blanked: false,
@@ -273,6 +281,8 @@ impl PresenterApp {
       recent: self.recent.clone(),
       show_thumbnails: self.show_thumbnails,
       thumb_height: self.thumb_height,
+      pointer_color: self.pointer_color,
+      theme: self.theme,
     }
   }
 
@@ -612,6 +622,11 @@ impl PresenterApp {
           if ui.button(small("🗑 Delete (D)")).on_hover_text("Clear all drawings").clicked() {
             self.clear_drawings();
           }
+          // Colour of the pointer dot and drawings: a small round swatch (RGB only — the
+          // picker keeps transparency fixed).
+          if color_dot_picker(ui, &mut self.pointer_color) {
+            self.dirty = true;
+          }
         }
 
         // ── Far right: About + filename ──
@@ -621,6 +636,20 @@ impl PresenterApp {
           }
           if ui.button(small("Shortcuts")).on_hover_text("Show keyboard & mouse shortcuts").clicked() {
             self.show_shortcuts = !self.show_shortcuts;
+          }
+          // Theme toggle (left of Shortcuts): clicking cycles system → dark → light.
+          let (theme_icon, theme_name, next_theme) = match self.theme {
+            config::Theme::System => ("💻", "system", config::Theme::Dark),
+            config::Theme::Dark => ("🌙", "dark", config::Theme::Light),
+            config::Theme::Light => ("☀", "light", config::Theme::System),
+          };
+          if ui
+            .button(small(theme_icon))
+            .on_hover_text(format!("Theme: {theme_name} — click to cycle"))
+            .clicked()
+          {
+            self.theme = next_theme;
+            self.dirty = true;
           }
           if let Some(doc) = self.document.as_ref() {
             let name = doc.path().file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -1020,6 +1049,7 @@ impl PresenterApp {
       layout_index,
       pointer_norm,
       pointer_size,
+      pointer_color,
       mode,
       strokes,
       drawing,
@@ -1036,6 +1066,7 @@ impl PresenterApp {
     let mut input = Some(SlideInput {
       mode: *mode,
       size: *pointer_size,
+      color: egui::Color32::from_rgb(pointer_color[0], pointer_color[1], pointer_color[2]),
       pointer: pointer_norm,
       strokes: strokes.entry(page).or_default(),
       drawing,
@@ -1150,6 +1181,7 @@ impl PresenterApp {
 
 impl eframe::App for PresenterApp {
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    ctx.set_theme(theme_pref(self.theme));
     self.handle_shortcuts(ctx);
     // Mouse-wheel navigation / zoom on the presenter window, anchored at its current slide.
     let anchor = self.current_slide_rect;
@@ -1231,6 +1263,7 @@ impl PresenterApp {
     let mut inp = SlideInput {
       mode: self.mode,
       size: self.pointer_size,
+      color: egui::Color32::from_rgb(self.pointer_color[0], self.pointer_color[1], self.pointer_color[2]),
       pointer: &mut self.pointer_norm,
       strokes: self.strokes.entry(page).or_default(),
       drawing: &mut self.drawing,
@@ -1471,11 +1504,63 @@ fn process_slide_input(ui: &mut egui::Ui, rect: egui::Rect, uv: egui::Rect, inp:
 
   // Draw the page's strokes, then the pointer dot (if any) on top — clipped to the slide.
   let painter = ui.painter_at(rect);
-  draw_strokes(&painter, rect, uv, inp.strokes);
+  draw_strokes(&painter, rect, uv, inp.strokes, inp.color);
   if let Some(n) = *inp.pointer {
-    draw_pointer_dot(&painter, rect, uv, n, inp.size);
+    draw_pointer_dot(&painter, rect, uv, n, inp.size, inp.color);
   }
   resp
+}
+
+/// A small round colour swatch that opens an RGB colour picker popup on click (alpha stays
+/// fixed). Returns true when the colour changed. A compact alternative to egui's wide
+/// `color_edit_button_srgb` rectangle.
+fn color_dot_picker(ui: &mut egui::Ui, rgb: &mut [u8; 3]) -> bool {
+  let popup_id = ui.auto_id_with("ptr-color-popup");
+  let d = ui.spacing().interact_size.y.clamp(16.0, 22.0);
+  let (rect, resp) = ui.allocate_exact_size(egui::vec2(d, d), egui::Sense::click());
+  let resp = resp.on_hover_text("Pointer & drawing colour");
+
+  // The dot: a filled circle in the current colour with a subtle rim.
+  let color = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+  let r = d * 0.38;
+  let rim = ui.visuals().widgets.inactive.fg_stroke.color;
+  ui.painter().circle_filled(rect.center(), r, color);
+  ui.painter().circle_stroke(rect.center(), r, egui::Stroke::new(1.0_f32, rim));
+
+  if resp.clicked() {
+    ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+  }
+
+  let mut changed = false;
+  if ui.memory(|mem| mem.is_popup_open(popup_id)) {
+    let area = egui::Area::new(popup_id)
+      .order(egui::Order::Foreground)
+      .fixed_pos(rect.left_bottom())
+      .show(ui.ctx(), |ui| {
+        egui::Frame::popup(ui.style()).show(ui, |ui| {
+          let mut c = color;
+          if egui::color_picker::color_picker_color32(ui, &mut c, egui::color_picker::Alpha::Opaque) {
+            let [cr, cg, cb, _] = c.to_array();
+            *rgb = [cr, cg, cb];
+            changed = true;
+          }
+        });
+      })
+      .response;
+    if !resp.clicked() && (ui.input(|i| i.key_pressed(egui::Key::Escape)) || area.clicked_elsewhere()) {
+      ui.memory_mut(|mem| mem.close_popup());
+    }
+  }
+  changed
+}
+
+/// Map our persisted theme preference to egui's.
+fn theme_pref(t: config::Theme) -> egui::ThemePreference {
+  match t {
+    config::Theme::System => egui::ThemePreference::System,
+    config::Theme::Dark => egui::ThemePreference::Dark,
+    config::Theme::Light => egui::ThemePreference::Light,
+  }
 }
 
 /// The whole-slide UV window (no zoom).
@@ -1511,20 +1596,27 @@ fn screen_to_slide(rect: egui::Rect, uv: egui::Rect, p: egui::Pos2) -> egui::Pos
 }
 
 /// Draw the laser-pointer dot at a slide-normalized position within the visible `uv` window.
-fn draw_pointer_dot(painter: &egui::Painter, rect: egui::Rect, uv: egui::Rect, norm: egui::Pos2, size: f32) {
+fn draw_pointer_dot(painter: &egui::Painter, rect: egui::Rect, uv: egui::Rect, norm: egui::Pos2, size: f32, color: egui::Color32) {
   let center = slide_to_screen(rect, uv, norm);
   let r = (rect.height() * 0.012 * size).max(3.0);
-  // Semi-transparent: a faint halo and a translucent red core.
-  painter.circle_filled(center, r * 2.2, egui::Color32::from_rgba_unmultiplied(255, 40, 40, 40));
-  painter.circle_filled(center, r, egui::Color32::from_rgba_unmultiplied(230, 30, 30, 140));
-  painter.circle_stroke(center, r, egui::Stroke::new(1.5_f32, egui::Color32::from_rgba_unmultiplied(150, 0, 0, 140)));
+  let [cr, cg, cb, _] = color.to_array();
+  // Semi-transparent (alpha fixed): a faint halo, a translucent core, and a darker rim.
+  let dark = |c: u8| ((c as f32) * 0.6) as u8;
+  painter.circle_filled(center, r * 2.2, egui::Color32::from_rgba_unmultiplied(cr, cg, cb, 40));
+  painter.circle_filled(center, r, egui::Color32::from_rgba_unmultiplied(cr, cg, cb, 140));
+  painter.circle_stroke(
+    center,
+    r,
+    egui::Stroke::new(1.5_f32, egui::Color32::from_rgba_unmultiplied(dark(cr), dark(cg), dark(cb), 140)),
+  );
 }
 
 /// Draw freehand strokes onto `rect`, mapped through the visible `uv` window (so they
 /// track the slide under zoom/pan).
-fn draw_strokes(painter: &egui::Painter, rect: egui::Rect, uv: egui::Rect, strokes: &[Stroke]) {
-  // Semi-transparent red, matching the pointer dot's core.
-  let color = egui::Color32::from_rgba_unmultiplied(230, 30, 30, 140);
+fn draw_strokes(painter: &egui::Painter, rect: egui::Rect, uv: egui::Rect, strokes: &[Stroke], color: egui::Color32) {
+  // Semi-transparent (alpha fixed), matching the pointer dot's core.
+  let [cr, cg, cb, _] = color.to_array();
+  let color = egui::Color32::from_rgba_unmultiplied(cr, cg, cb, 140);
   for s in strokes {
     // Line width scales with zoom (thinner window -> thicker on screen).
     let w = (s.width_factor * rect.height() / uv.height().max(1e-6)).max(1.0);
