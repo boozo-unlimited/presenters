@@ -63,10 +63,7 @@ just setup-pdfium
 
 This downloads the matching build from [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) for your OS/arch into `third_party/pdfium/` (git-ignored).
 
-The app finds the library next to the binary, under an installed prefix (`.deb`/`.app` bundles
-include it), in `third_party/pdfium/lib/` relative to the working directory, or via the
-`PDFIUM_LIB_DIR` environment variable. On Linux, if you run an installed binary outside the
-repo, install the library system-wide instead:
+The app finds the library next to the binary, under an installed prefix (`.deb`/`.app` bundles include it), in `third_party/pdfium/lib/` relative to the working directory, or via the `PDFIUM_LIB_DIR` environment variable. On Linux, if you run an installed binary outside the repo, install the library system-wide instead:
 
 ```bash
 sudo install -m0644 third_party/pdfium/lib/libpdfium.so /usr/local/lib/ && sudo ldconfig
@@ -113,31 +110,17 @@ Launch with no argument and press **O** (or click **Open**) to pick a file.
 | Double-click (audience) | Toggle fullscreen |
 | Drag & drop a PDF | Open it |
 
-All mouse features work on **either window** - the presenter window's current slide *and* the
-audience Presentation window - and both drive the same shared state, so pointer, drawings, and
-zoom always mirror between them. Use whichever window your cursor is on (handy when you stand
-by the projected screen).
+All mouse features work on **either window** - the presenter window's current slide *and* the audience Presentation window - and both drive the same shared state, so pointer, drawings, and zoom always mirror between them. Use whichever window your cursor is on (handy when you stand by the projected screen).
 
-**Laser pointer & drawing:** hold the mouse button over the **current slide** (in either
-window) and a semi-transparent dot appears at that spot on the audience screen, following your
-cursor; release to hide. Press **`P`** (or the header button) to toggle **drawing** mode, where
-holding and dragging draws freehand lines on the slide instead; **`D`** deletes all drawings.
-The **Pointer size −/+** buttons in the header set both the dot size and the line thickness.
-Drawings are kept per slide while you navigate, and cleared when you close the file (never
-saved to disk).
+**Laser pointer & drawing:** hold the mouse button over the **current slide** (in either window) and a semi-transparent dot appears at that spot on the audience screen, following your cursor; release to hide. Press **`P`** (or the header button) to toggle **drawing** mode, where holding and dragging draws freehand lines on the slide instead; **`D`** deletes all drawings. The **Pointer size −/+** buttons in the header set both the dot size and the line thickness. Drawings are kept per slide while you navigate, and cleared when you close the file (never saved to disk).
 
-**Scroll & zoom:** the scroll wheel navigates slides in either window; hold **Ctrl** (or ⌘) and
-**scroll** to zoom the current slide in/out at the cursor, and **Ctrl + drag** to pan around -
-mirrored on both screens so you can show a detail to the room. Zoom resets when you change
-slides.
+**Scroll & zoom:** the scroll wheel navigates slides in either window; hold **Ctrl** (or ⌘) and **scroll** to zoom the current slide in/out at the cursor, and **Ctrl + drag** to pan around - mirrored on both screens so you can show a detail to the room. Zoom resets when you change slides.
 
-You can also **drag & drop a PDF onto the window** to open it. The **Shortcuts** button in
-the header shows the key list in-app.
+You can also **drag & drop a PDF onto the window** to open it. The **Shortcuts** button in the header shows the key list in-app.
 
 ## Packaging
 
-Build a native, self-contained bundle (icon + PDFium included) with
-[cargo-bundle](https://github.com/burtonageo/cargo-bundle):
+Build a native, self-contained bundle (icon + PDFium included) with [cargo-bundle](https://github.com/burtonageo/cargo-bundle):
 
 ```bash
 cargo install cargo-bundle   # once (also part of `just install`)
@@ -153,16 +136,9 @@ Per-format recipes (run each **on its target OS** - cargo-bundle does not cross-
 | `just bundle-appimage` | `.AppImage` | Linux |
 | `just bundle-msi` | `.msi` | Windows |
 
-Bundles land under `target/release/bundle/<format>/`. The recipes run `ensure-pdfium`
-first, so the matching PDFium library is downloaded and shipped inside the bundle; at
-runtime the app finds it there (e.g. macOS `Contents/Resources/`) with no external setup.
+Bundles land under `target/release/bundle/<format>/`. The recipes run `ensure-pdfium` first, so the matching PDFium library is downloaded and shipped inside the bundle; at runtime the app finds it there (e.g. macOS `Contents/Resources/`) with no external setup.
 
-**macOS signing.** cargo-bundle adds files after the binary is signed, which invalidates
-the signature and makes macOS report the app as "damaged". `just bundle-mac` therefore
-**ad-hoc signs** the finished bundle so it runs locally. An app *downloaded* from elsewhere
-is also quarantined - open it the first time via right-click → **Open**, or clear the flag
-with `xattr -dr com.apple.quarantine <app>`. Distributing without any warning requires a
-Developer ID signature and notarization (an Apple Developer account).
+**macOS signing.** cargo-bundle adds files after the binary is signed, which invalidates the signature and makes macOS report the app as "damaged". `just bundle-mac` therefore **ad-hoc signs** the finished bundle so it runs locally. An app *downloaded* from elsewhere is also quarantined - open it the first time via right-click → **Open**, or clear the flag with `xattr -dr com.apple.quarantine <app>`. Distributing without any warning requires a Developer ID signature and notarization (an Apple Developer account).
 
 ## Development
 
@@ -175,10 +151,7 @@ just build      # release build into bin/
 
 Tests are headless and need the PDFium library present (run `just setup-pdfium` first).
 
-The **About** window (button at the far right of the header) shows the app info and the
-third-party libraries with their licenses. That list is generated from the dependency tree
-with [cargo-about](https://github.com/EmbarkStudios/cargo-about) and embedded into the app;
-regenerate it after changing dependencies:
+The **About** window (button at the far right of the header) shows the app info and the third-party libraries with their licenses. That list is generated from the dependency tree with [cargo-about](https://github.com/EmbarkStudios/cargo-about) and embedded into the app; regenerate it after changing dependencies:
 
 ```bash
 just thirdparty   # writes assets/thirdparty.md (needs: cargo install cargo-about --features cli)
@@ -188,6 +161,4 @@ just thirdparty   # writes assets/thirdparty.md (needs: cargo install cargo-abou
 
 Licensed under the MIT license ([LICENSE](LICENSE)).
 
-PDF rendering uses Google's PDFium (BSD-3-Clause), bundled with the application. The full
-license texts for PDFium and every Rust dependency are shown in the app's **About** window
-and generated into `assets/thirdparty.md` (`just thirdparty`).
+PDF rendering uses Google's PDFium (BSD-3-Clause), bundled with the application. The full license texts for PDFium and every Rust dependency are shown in the app's **About** window and generated into `assets/thirdparty.md` (`just thirdparty`).
