@@ -4,9 +4,11 @@
 
 # presenters
 
-**A fast, native dual-screen PDF presenter for Typst & LaTeX slides - inspired by [pympress](https://github.com/Cimbali/pympress).**
+**A fast, native dual-screen PDF presenter for Typst & LaTeX slides.**
 
 Runs on macOS · Windows · Linux · Built with [egui](https://github.com/emilk/egui) + [PDFium](https://pdfium.googlesource.com/pdfium/)
+
+[![Sponsor tschinz](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/tschinz)
 
 </div>
 

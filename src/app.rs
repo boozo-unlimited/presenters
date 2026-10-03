@@ -915,6 +915,14 @@ impl PresenterApp {
           ui.hyperlink_to("© 2026 tschinz", "https://github.com/tschinz");
           ui.label(format!("License: {}", env!("CARGO_PKG_LICENSE")));
           ui.hyperlink(env!("CARGO_PKG_REPOSITORY"));
+          ui.add_space(8.0);
+          // GitHub Sponsors button (styled like the GitHub one; opens the sponsors page).
+          let sponsor = egui::Button::new(egui::RichText::new("❤ Sponsor").color(egui::Color32::WHITE).strong())
+            .fill(egui::Color32::from_rgb(0xDB, 0x61, 0xA2))
+            .min_size(egui::vec2(120.0, 28.0));
+          if ui.add(sponsor).on_hover_text("Support development on GitHub Sponsors").clicked() {
+            ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/sponsors/tschinz"));
+          }
         });
         ui.add_space(6.0);
         ui.label("Renders PDFs with PDFium (BSD-3-Clause), bundled with the application.");
