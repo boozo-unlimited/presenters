@@ -585,33 +585,34 @@ impl PresenterApp {
           }
         }
 
-        // ── Display ──
-        ui.separator();
-        ui.label(small("Footer size"));
-        if ui.button(small(" − ")).on_hover_text("Smaller (-)").clicked() {
-          self.adjust_font(-2.0);
-        }
-        if ui.button(small(" + ")).on_hover_text("Larger (+)").clicked() {
-          self.adjust_font(2.0);
-        }
-        if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
-          self.flip_layout();
-        }
-        if ui.button(small("🎞 Thumbnails (T)")).on_hover_text("Toggle the slide thumbnail strip").clicked() {
-          self.show_thumbnails = !self.show_thumbnails;
-          self.dirty = true;
-        }
-
-        // ── Drawing ──
-        ui.separator();
-        ui.label(small("Pointer size"));
-        if ui.button(small(" − ")).on_hover_text("Smaller pointer / thinner line").clicked() {
-          self.adjust_pointer(-POINTER_STEP);
-        }
-        if ui.button(small(" + ")).on_hover_text("Larger pointer / thicker line").clicked() {
-          self.adjust_pointer(POINTER_STEP);
-        }
+        // Display and drawing controls are only meaningful with a document open.
         if doc_open {
+          // ── Display ──
+          ui.separator();
+          ui.label(small("Footer size"));
+          if ui.button(small(" − ")).on_hover_text("Smaller (-)").clicked() {
+            self.adjust_font(-2.0);
+          }
+          if ui.button(small(" + ")).on_hover_text("Larger (+)").clicked() {
+            self.adjust_font(2.0);
+          }
+          if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
+            self.flip_layout();
+          }
+          if ui.button(small("🎞 Thumbnails (T)")).on_hover_text("Toggle the slide thumbnail strip").clicked() {
+            self.show_thumbnails = !self.show_thumbnails;
+            self.dirty = true;
+          }
+
+          // ── Drawing ──
+          ui.separator();
+          ui.label(small("Pointer size"));
+          if ui.button(small(" − ")).on_hover_text("Smaller pointer / thinner line").clicked() {
+            self.adjust_pointer(-POINTER_STEP);
+          }
+          if ui.button(small(" + ")).on_hover_text("Larger pointer / thicker line").clicked() {
+            self.adjust_pointer(POINTER_STEP);
+          }
           let mode_label = match self.mode {
             InputMode::Pointer => "✏ Draw (P)",
             InputMode::Draw => "🔴 Pointer (P)",
@@ -952,6 +953,7 @@ impl PresenterApp {
     let logo = self.logo_texture(ctx);
     let mut to_open: Option<PathBuf> = None;
     let mut to_remove: Option<PathBuf> = None;
+    let mut to_reveal: Option<PathBuf> = None;
     egui::CentralPanel::default().show(ctx, |ui| {
       ui.add_space(28.0);
       ui.vertical_centered(|ui| {
@@ -982,42 +984,65 @@ impl PresenterApp {
       ui.vertical_centered(|ui| ui.strong(egui::RichText::new("Recent files").size(16.0)));
       ui.add_space(10.0);
 
-      // Bigger file buttons, centered, at most three per row.
-      let cols = self.recent.len().clamp(1, 3);
-      let (btn_w, btn_h) = (260.0_f32, 52.0_f32);
-      let gap = 12.0_f32;
+      // A vertical list (like Zed's recent projects): one row per file. Click the row to
+      // open it; hovering reveals two icons — open the containing folder, and remove.
+      const ROW_H: f32 = 32.0;
+      const ICON: f32 = 22.0;
+      const PAD: f32 = 10.0;
       egui::ScrollArea::vertical().show(ui, |ui| {
-        let avail = ui.available_width();
-        let row_w = cols as f32 * btn_w + (cols as f32 - 1.0) * gap;
-        let pad = ((avail - row_w) * 0.5).max(0.0);
-        for chunk in self.recent.chunks(cols) {
-          ui.horizontal(|ui| {
-            ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = gap;
-            for entry in chunk {
-              let name = entry.path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-              let folder = entry.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
-              let resp = ui.add_sized([btn_w, btn_h], egui::Button::new(egui::RichText::new(format!("📄  {name}")).size(17.0)));
-              resp.clone().on_hover_text(&folder);
-              // Small × in the top-right corner to remove this entry from the list.
-              let x_sz = 18.0;
-              let m = 4.0;
-              let x_rect = egui::Rect::from_min_size(egui::pos2(resp.rect.right() - x_sz - m, resp.rect.top() + m), egui::vec2(x_sz, x_sz));
-              let x_resp = ui
-                .put(x_rect, egui::Button::new(egui::RichText::new("✖").size(11.0)).small())
-                .on_hover_text("Remove from recent");
-              // × wins over the card so a remove-click never also opens the file.
-              if x_resp.clicked() {
-                to_remove = Some(entry.path.clone());
-              } else if resp.clicked() {
-                to_open = Some(entry.path.clone());
-              }
+        let list_w = ui.available_width().min(560.0);
+        // Geometric hover (pointer inside the row rect), so moving onto an action icon — which
+        // sits on top of the row — doesn't steal the row's hover and make the icons flicker.
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        ui.vertical_centered(|ui| {
+          for entry in &self.recent {
+            let name = entry.path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let folder = entry.path.parent().map(|p| p.display().to_string()).unwrap_or_default();
+
+            let (rect, row) = ui.allocate_exact_size(egui::vec2(list_w, ROW_H), egui::Sense::click());
+            // Row highlight on hover (geometric, so it doesn't flicker over the icons).
+            if pointer.is_some_and(|p| rect.contains(p)) {
+              ui.painter().rect_filled(rect, 5.0, ui.visuals().widgets.hovered.weak_bg_fill);
             }
-          });
-          ui.add_space(gap);
-        }
+
+            // Right-aligned action icons, always shown: remove, then open-folder to its left.
+            let x_rect = egui::Rect::from_center_size(egui::pos2(rect.right() - PAD - ICON * 0.5, rect.center().y), egui::vec2(ICON, ICON));
+            let folder_rect = x_rect.translate(egui::vec2(-(ICON + 2.0), 0.0));
+            let folder_resp = ui
+              .put(folder_rect, egui::Button::new(egui::RichText::new("📂").size(13.0)).frame(false))
+              .on_hover_text("Open containing folder");
+            let x_resp = ui
+              .put(x_rect, egui::Button::new(egui::RichText::new("✖").size(12.0)).frame(false))
+              .on_hover_text("Remove from recent");
+
+            // Filename, left-aligned, elided only if it would reach the icons.
+            let text_left = rect.left() + PAD;
+            let text_right = rect.right() - PAD - 2.0 * (ICON + 2.0);
+            let label = elide_middle(ui, &name, 15.0, (text_right - text_left).max(20.0));
+            ui.painter().text(
+              egui::pos2(text_left, rect.center().y),
+              egui::Align2::LEFT_CENTER,
+              label,
+              egui::FontId::proportional(15.0),
+              ui.visuals().text_color(),
+            );
+            row.clone().on_hover_text(format!("{name}\n{folder}"));
+
+            // Icon clicks take priority over the row's open-click.
+            if x_resp.clicked() {
+              to_remove = Some(entry.path.clone());
+            } else if folder_resp.clicked() {
+              to_reveal = Some(entry.path.clone());
+            } else if row.clicked() {
+              to_open = Some(entry.path.clone());
+            }
+          }
+        });
       });
     });
+    if let Some(path) = to_reveal {
+      crate::platform::reveal_in_file_manager(&path);
+    }
     if let Some(path) = to_remove {
       self.remove_recent(&path);
     }
@@ -1560,6 +1585,29 @@ fn color_dot_picker(ui: &mut egui::Ui, rgb: &mut [u8; 3]) -> bool {
     }
   }
   changed
+}
+
+/// Truncate `text` with a middle "…" so it fits within `max_w` points at `size`
+/// (proportional font). Keeps the start and the end (e.g. the file extension).
+fn elide_middle(ui: &egui::Ui, text: &str, size: f32, max_w: f32) -> String {
+  let fid = egui::FontId::proportional(size);
+  let width = |s: &str| ui.fonts(|f| f.layout_no_wrap(s.to_owned(), fid.clone(), egui::Color32::WHITE).size().x);
+  if width(text) <= max_w {
+    return text.to_owned();
+  }
+  let chars: Vec<char> = text.chars().collect();
+  let n = chars.len();
+  let mut keep = n.saturating_sub(1);
+  while keep > 1 {
+    let head = keep.div_ceil(2);
+    let tail = keep - head;
+    let candidate: String = chars[..head].iter().collect::<String>() + "…" + &chars[n - tail..].iter().collect::<String>();
+    if width(&candidate) <= max_w {
+      return candidate;
+    }
+    keep -= 1;
+  }
+  "…".to_owned()
 }
 
 /// Map our persisted theme preference to egui's.

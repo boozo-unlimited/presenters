@@ -3,6 +3,7 @@
 pub mod app;
 pub mod config;
 pub mod document;
+pub mod platform;
 pub mod render;
 pub mod screen;
 pub mod session;
