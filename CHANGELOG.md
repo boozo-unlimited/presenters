@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] - 2026-10-03
+
+### 🚀 Features
+
+- *(start-screen)* Recent-files list with open-folder and remove icons ([186c0ee](https://github.com/tschinz/presenters/commit/186c0ee1220a6d6ffedbd86a196f08888666596f) - zas)
+
+### 📚 Documentation
+
+- Rewrite README with install section and one-line installers ([e180802](https://github.com/tschinz/presenters/commit/e180802afc2edfa8b19908693a1d99242409fea5) - zas)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(readme)* Smaller fixes ([3667878](https://github.com/tschinz/presenters/commit/366787883ba1ce1955a8988ce323256685a7b167) - zas)
+- *(readme)* Add tag buttons ([5d00787](https://github.com/tschinz/presenters/commit/5d00787c28c1c10d3eb1f8f9b3cfe68d3023cdda) - zas)
+- *(assets)* Shrink screenshot images ([b5d935a](https://github.com/tschinz/presenters/commit/b5d935af0602b613456922c92a9bed33cc64f63d) - zas)
+
+
+**Full Changelog**: [v0.1.6...0.1.7](https://github.com/tschinz/presenters/compare/v0.1.6...0.1.7)
+
 ## [0.1.6] - 2026-10-03
 
 ### 🚀 Features
