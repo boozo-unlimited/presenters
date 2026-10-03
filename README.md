@@ -1,3 +1,4 @@
+![](https://tianji.zahno.dev/telemetry/clnzoxcy10001vy2ohi4obbi0/cmurtva0b18zkqvxez0rnlp8y.gif)
 <div align="center">
 
 <img src="img/logo.png" alt="presenters logo" width="260">
@@ -8,7 +9,7 @@
 
 Runs on macOS · Windows · Linux · Built with [egui](https://github.com/emilk/egui) + [PDFium](https://pdfium.googlesource.com/pdfium/)
 
-[![Sponsor tschinz](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/tschinz)
+[![GitHub Repo stars](https://img.shields.io/github/stars/tschinz/presenters?logo=github)](https://github.com/tschinz/presenters/stargazers) [![GitHub Release](https://img.shields.io/github/v/release/tschinz/presenters?logo=github)](https://github.com/tschinz/presenters/releases/latest) [![Sponsor tschinz](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/tschinz)
 
 </div>
 
