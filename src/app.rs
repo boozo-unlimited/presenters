@@ -104,6 +104,8 @@ pub struct PresenterApp {
   /// The strip's on-screen rect (so the wheel scrolls the strip instead of changing slides).
   thumb_rect: Option<egui::Rect>,
   status: String,
+  /// Last window title pushed to the OS (so we only send a viewport command on change).
+  title: String,
   footer_font: f32,
   /// Laser-pointer dot size factor (1.0 = default).
   pointer_size: f32,
@@ -172,6 +174,7 @@ impl PresenterApp {
       thumb_follow_last: usize::MAX,
       thumb_rect: None,
       status: "Open a PDF to begin (O).".to_owned(),
+      title: String::new(),
       footer_font: st.footer_font,
       pointer_size: st.pointer_size.clamp(MIN_POINTER_SIZE, MAX_POINTER_SIZE),
       pointer_color: st.pointer_color,
@@ -556,81 +559,111 @@ impl PresenterApp {
 
   fn header(&mut self, ctx: &egui::Context) {
     egui::TopBottomPanel::top("header").show(ctx, |ui| {
-      ui.horizontal_wrapped(|ui| {
-        let small = |s: &str| egui::RichText::new(s).size(HEADER_FONT);
+      let small = |s: &str| egui::RichText::new(s).size(HEADER_FONT);
+      let doc_open = self.document.is_some();
 
-        let doc_open = self.document.is_some();
+      // Width needed by the fixed right-aligned controls (theme, shortcuts, about), so the
+      // wrapping left controls are constrained to the remaining space and never run under them.
+      let text_w = |ui: &egui::Ui, s: &str| {
+        ui.fonts(|f| {
+          f.layout_no_wrap(s.to_owned(), egui::FontId::proportional(HEADER_FONT), egui::Color32::WHITE)
+            .size()
+            .x
+        })
+      };
+      let per_btn = ui.spacing().button_padding.x * 2.0 + ui.spacing().item_spacing.x;
+      let right_w = text_w(ui, "About") + text_w(ui, "Shortcuts") + text_w(ui, "💻") + 3.0 * per_btn + 8.0;
 
-        // ── General ──
-        if ui.button(small("📂 Open (O)")).clicked() {
-          self.pick_file();
-        }
-        if doc_open {
-          if ui.button(small("✖ Close (W)")).clicked() {
-            self.close_file();
-          }
-          if self.presenting {
-            if ui.button(small("⏹ Quit (Esc)")).clicked() {
-              self.stop_presentation();
+      ui.horizontal(|ui| {
+        let left_w = (ui.available_width() - right_w).max(160.0);
+        ui.scope(|ui| {
+          ui.set_min_width(left_w);
+          ui.set_max_width(left_w);
+          ui.horizontal_wrapped(|ui| {
+            // ── General ──
+            if ui.button(small("📂 Open (O)")).clicked() {
+              self.pick_file();
             }
-          } else if ui.button(small("▶ Present (F5)")).clicked() {
-            self.start_presentation();
-          }
-          let blank_label = if self.blanked { "⬛ Blanked (B)" } else { "⬛ Blank (B)" };
-          if ui.button(small(blank_label)).clicked() {
-            self.blanked = !self.blanked;
-          }
-          if ui.button(small("↺ Reset time (R)")).clicked() {
-            self.session.timer_mut().reset();
-          }
-        }
+            if doc_open {
+              if ui.button(small("✖ Close (W)")).clicked() {
+                self.close_file();
+              }
+              if self.presenting {
+                if ui.button(small("⏹ Quit (Esc)")).clicked() {
+                  self.stop_presentation();
+                }
+              } else if ui.button(small("▶ Present (F5)")).clicked() {
+                self.start_presentation();
+              }
+              let blank_label = if self.blanked { "⬛ Blanked (B)" } else { "⬛ Blank (B)" };
+              if ui.button(small(blank_label)).clicked() {
+                self.blanked = !self.blanked;
+              }
+              if ui.button(small("↺ Reset time (R)")).clicked() {
+                self.session.timer_mut().reset();
+              }
 
-        // Display and drawing controls are only meaningful with a document open.
-        if doc_open {
-          // ── Display ──
-          ui.separator();
-          ui.label(small("Footer size"));
-          if ui.button(small(" − ")).on_hover_text("Smaller (-)").clicked() {
-            self.adjust_font(-2.0);
-          }
-          if ui.button(small(" + ")).on_hover_text("Larger (+)").clicked() {
-            self.adjust_font(2.0);
-          }
-          if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
-            self.flip_layout();
-          }
-          if ui.button(small("🎞 Thumbnails (T)")).on_hover_text("Toggle the slide thumbnail strip").clicked() {
-            self.show_thumbnails = !self.show_thumbnails;
-            self.dirty = true;
-          }
+              // ── Settings popover: footer size + pointer size (stays open while stepping) ──
+              ui.separator();
+              let gear = ui.button(small("⚙")).on_hover_text("Footer & pointer size");
+              let settings_id = ui.make_persistent_id("settings-popup");
+              if gear.clicked() {
+                ui.memory_mut(|m| m.toggle_popup(settings_id));
+              }
+              egui::popup::popup_below_widget(ui, settings_id, &gear, egui::popup::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                ui.set_min_width(150.0);
+                ui.horizontal(|ui| {
+                  ui.label("Footer size");
+                  if ui.button(" − ").clicked() {
+                    self.adjust_font(-2.0);
+                  }
+                  if ui.button(" + ").clicked() {
+                    self.adjust_font(2.0);
+                  }
+                });
+                ui.horizontal(|ui| {
+                  ui.label("Pointer size");
+                  if ui.button(" − ").clicked() {
+                    self.adjust_pointer(-POINTER_STEP);
+                  }
+                  if ui.button(" + ").clicked() {
+                    self.adjust_pointer(POINTER_STEP);
+                  }
+                });
+              });
 
-          // ── Drawing ──
-          ui.separator();
-          ui.label(small("Pointer size"));
-          if ui.button(small(" − ")).on_hover_text("Smaller pointer / thinner line").clicked() {
-            self.adjust_pointer(-POINTER_STEP);
-          }
-          if ui.button(small(" + ")).on_hover_text("Larger pointer / thicker line").clicked() {
-            self.adjust_pointer(POINTER_STEP);
-          }
-          let mode_label = match self.mode {
-            InputMode::Pointer => "✏ Draw (P)",
-            InputMode::Draw => "🔴 Pointer (P)",
-          };
-          if ui.button(small(mode_label)).on_hover_text("Toggle laser pointer / drawing").clicked() {
-            self.toggle_mode();
-          }
-          if ui.button(small("🗑 Delete (D)")).on_hover_text("Clear all drawings").clicked() {
-            self.clear_drawings();
-          }
-          // Colour of the pointer dot and drawings: a small round swatch (RGB only — the
-          // picker keeps transparency fixed).
-          if color_dot_picker(ui, &mut self.pointer_color) {
-            self.dirty = true;
-          }
-        }
+              // ── Display ──
+              if ui.button(small("🔀 Layout (L)")).on_hover_text("Cycle panel arrangements").clicked() {
+                self.flip_layout();
+              }
+              if ui.button(small("🎞 Thumbnails (T)")).on_hover_text("Toggle the slide thumbnail strip").clicked() {
+                self.show_thumbnails = !self.show_thumbnails;
+                self.dirty = true;
+              }
 
-        // ── Far right: About + filename ──
+              // ── Drawing: toggle always; colour + delete appear only while in draw mode ──
+              ui.separator();
+              let mode_label = match self.mode {
+                InputMode::Pointer => "✏ Draw (P)",
+                InputMode::Draw => "🔴 Pointer (P)",
+              };
+              if ui.button(small(mode_label)).on_hover_text("Toggle laser pointer / drawing").clicked() {
+                self.toggle_mode();
+              }
+              if self.mode == InputMode::Draw {
+                // Pointer/drawing colour (RGB only, transparency fixed).
+                if color_dot_picker(ui, &mut self.pointer_color) {
+                  self.dirty = true;
+                }
+                if ui.button(small("🗑 Delete (D)")).on_hover_text("Clear all drawings").clicked() {
+                  self.clear_drawings();
+                }
+              }
+            }
+          });
+        });
+
+        // Fixed right-aligned controls.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
           if ui.button(small("About")).on_hover_text("About this application").clicked() {
             self.show_about = !self.show_about;
@@ -638,7 +671,7 @@ impl PresenterApp {
           if ui.button(small("Shortcuts")).on_hover_text("Show keyboard & mouse shortcuts").clicked() {
             self.show_shortcuts = !self.show_shortcuts;
           }
-          // Theme toggle (left of Shortcuts): clicking cycles system → dark → light.
+          // Theme toggle (left of Shortcuts): clicking cycles system -> dark -> light.
           let (theme_icon, theme_name, next_theme) = match self.theme {
             config::Theme::System => ("💻", "system", config::Theme::Dark),
             config::Theme::Dark => ("🌙", "dark", config::Theme::Light),
@@ -646,16 +679,11 @@ impl PresenterApp {
           };
           if ui
             .button(small(theme_icon))
-            .on_hover_text(format!("Theme: {theme_name} — click to cycle"))
+            .on_hover_text(format!("Theme: {theme_name} (click to cycle)"))
             .clicked()
           {
             self.theme = next_theme;
             self.dirty = true;
-          }
-          if let Some(doc) = self.document.as_ref() {
-            let name = doc.path().file_name().unwrap_or_default().to_string_lossy().into_owned();
-            ui.separator();
-            ui.label(small(&format!("{} · {} pages", name, doc.page_count())));
           }
         });
       });
@@ -1215,6 +1243,21 @@ impl PresenterApp {
 impl eframe::App for PresenterApp {
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     ctx.set_theme(theme_pref(self.theme));
+
+    // Window title carries the open file and its page count (kept out of the header).
+    let want_title = match self.document.as_ref() {
+      Some(doc) => format!(
+        "presenters - {} · {} pages",
+        doc.path().file_name().unwrap_or_default().to_string_lossy(),
+        doc.page_count()
+      ),
+      None => "presenters".to_owned(),
+    };
+    if want_title != self.title {
+      self.title.clone_from(&want_title);
+      ctx.send_viewport_cmd(egui::ViewportCommand::Title(want_title));
+    }
+
     self.handle_shortcuts(ctx);
     // Mouse-wheel navigation / zoom on the presenter window, anchored at its current slide.
     let anchor = self.current_slide_rect;
