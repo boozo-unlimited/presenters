@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] - 2026-10-05
+
+### 🐛 Bug Fixes
+
+- Windows icon ([070db79](https://github.com/tschinz/presenters/commit/070db797d03e3929deb4d6750afd5197d92eec63) - zas)
+- Bug in header, place filename in window title ([0dd291a](https://github.com/tschinz/presenters/commit/0dd291a01de7faedf2252d182e4097bd9302bb11) - zas)
+
+
+**Full Changelog**: [v0.1.7...0.1.8](https://github.com/tschinz/presenters/compare/v0.1.7...0.1.8)
+
 ## [0.1.7] - 2026-10-03
 
 ### 🚀 Features
